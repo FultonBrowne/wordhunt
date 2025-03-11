@@ -110,10 +110,14 @@ const [grid, setGrid] = useState<string[][]>([]);
     const touch = e.touches[0];
     const element = document.elementFromPoint(touch.clientX, touch.clientY);
 
-    if (element?.dataset?.row && element?.dataset?.col) {
-      handleMove(Number(element.dataset.row), Number(element.dataset.col));
-    }
-  };
+	if (element instanceof HTMLElement) {
+	  const row = Number(element.dataset.row);
+	  const col = Number(element.dataset.col);
+	  if (Number.isInteger(row) && Number.isInteger(col)) {
+		handleMove(row, col);
+	  };
+	}
+  }
 
   const drawLine = (cells: [number, number][]) => {
     const canvas = canvasRef.current;
