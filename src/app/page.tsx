@@ -1,101 +1,210 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useRef } from "react";
+
+const GRID_SIZE = 4;
+const GAME_DURATION = 60;
+const CELL_SIZE = 64;
+const POINTS_PER_WORD = 10;
+
+// Fetch word list from an API
+async function fetchWordList(): Promise<Set<string>> {
+  const res = await fetch(
+    "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt"
+  );
+  const text = await res.text();
+  return new Set(text.split("\n")
+			.filter((word) => word.length >= 3)
+		 .map((word) => word.trim().toUpperCase()));
+}
+
+// Generate a random letter grid
+function generateGrid() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return Array.from({ length: GRID_SIZE }, () =>
+    Array.from({ length: GRID_SIZE }, () =>
+      letters[Math.floor(Math.random() * letters.length)]
+    )
+  );
+}
+
+export default function WordHunt() {
+  const [grid, setGrid] = useState<string[][]>([]);
+  const [selectedCells, setSelectedCells] = useState<[number, number][]>([]);
+  const [currentWord, setCurrentWord] = useState<string>("");
+  const [foundWords, setFoundWords] = useState<Set<string>>(new Set());
+  const [wordList, setWordList] = useState<Set<string>>(new Set());
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
+  const [score, setScore] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const isMouseDown = useRef(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    setGrid(generateGrid());
+    fetchWordList().then(setWordList);
+  }, []);
+
+  useEffect(() => {
+    if (gameStarted && timeLeft > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    }
+    
+    if (timeLeft <= 0) {
+      setGameOver(true);
+      clearInterval(timerRef.current!);
+    }
+
+    return () => clearInterval(timerRef.current!);
+  }, [gameStarted, timeLeft]);
+
+  const handleStart = (row: number, col: number) => {
+    if (!gameStarted) {
+      setGameStarted(true);
+    }
+
+    if (gameOver) return;
+    isMouseDown.current = true;
+    setSelectedCells([[row, col]]);
+    setCurrentWord(grid[row][col]);
+    drawLine([[row, col]]);
+  };
+
+  const handleMove = (row: number, col: number) => {
+    if (!isMouseDown.current || gameOver) return;
+    if (selectedCells.some(([r, c]) => r === row && c === col)) return;
+
+    setSelectedCells([...selectedCells, [row, col]]);
+    setCurrentWord((prev) => prev + grid[row][col]);
+    drawLine([...selectedCells, [row, col]]);
+  };
+
+  const handleEnd = () => {
+    isMouseDown.current = false;
+    if (wordList.has(currentWord)) {
+      if (!foundWords.has(currentWord)) {
+        setFoundWords((prev) => new Set([...prev, currentWord]));
+        setScore((prev) => prev + POINTS_PER_WORD);
+      }
+    }
+    setSelectedCells([]);
+    setCurrentWord("");
+    clearCanvas();
+  };
+
+  const drawLine = (cells: [number, number][]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "cyan";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+    cells.forEach(([row, col], index) => {
+      const x = col * CELL_SIZE + CELL_SIZE / 2;
+      const y = row * CELL_SIZE + CELL_SIZE / 2;
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  const restartGame = () => {
+    setGrid(generateGrid());
+    setFoundWords(new Set());
+    setScore(0);
+    setGameStarted(false);
+    setGameOver(false);
+    setTimeLeft(GAME_DURATION);
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+      <h1 className="text-3xl font-bold mb-4">Word Hunt</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      {/* Score Counter */}
+      <div className="absolute top-5 right-5 text-xl font-bold bg-blue-700 px-4 py-2 rounded">
+        Score: {score}
+      </div>
+
+      {gameOver ? (
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-red-500">Time’s Up!</h2>
+          <p className="text-xl mt-2">You found {foundWords.size} words!</p>
+          <p className="text-xl font-bold">Final Score: {score}</p>
+          <ul className="mt-2">
+            {Array.from(foundWords).map((word) => (
+              <li key={word} className="text-green-400">{word}</li>
+            ))}
+          </ul>
+          <button 
+            className="mt-4 px-6 py-2 bg-blue-600 text-white font-bold rounded-lg"
+            onClick={restartGame}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            Play Again
+          </button>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      ) : (
+        <>
+          <div className="text-2xl font-bold mb-4">
+            Time Left:{" "}
+            <span className={`${timeLeft <= 10 ? "text-red-500" : "text-white"}`}>
+              {timeLeft}s
+            </span>
+          </div>
+
+          {!gameStarted && <p className="text-lg text-gray-400">Tap a letter to start!</p>}
+
+          <div className="relative">
+            <div className="grid grid-cols-4 gap-2 relative">
+              {grid.map((row, rowIndex) =>
+                row.map((letter, colIndex) => {
+                  const isSelected = selectedCells.some(
+                    ([r, c]) => r === rowIndex && c === colIndex
+                  );
+                  const wordExists = foundWords.has(currentWord);
+                const isGreen = wordList.has(currentWord) && !wordExists && currentWord.length >= 3;
+                const isYellow = wordExists && currentWord.length >= 3;
+
+                  return (
+                    <div
+                      key={`${rowIndex}-${colIndex}`}
+                      className={`w-16 h-16 flex items-center justify-center border-2 border-gray-300 text-2xl font-bold cursor-pointer select-none relative z-10
+                        ${isGreen && isSelected ? "bg-green-500 text-white" : isYellow && isSelected ? "bg-yellow-500 text-black" : isSelected ? "bg-blue-500 text-white" : "bg-gray-700"}`}
+                      onMouseDown={() => handleStart(rowIndex, colIndex)}
+                      onMouseEnter={() => handleMove(rowIndex, colIndex)}
+                      onMouseUp={handleEnd}
+                      onTouchEnd={handleEnd}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <canvas ref={canvasRef} className="absolute top-0 left-0 z-0 pointer-events-none" width={GRID_SIZE * CELL_SIZE} height={GRID_SIZE * CELL_SIZE} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
