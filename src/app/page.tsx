@@ -29,7 +29,7 @@ function generateGrid() {
 }
 
 export default function WordHunt() {
-  const [grid, setGrid] = useState<string[][]>([]);
+const [grid, setGrid] = useState<string[][]>([]);
   const [selectedCells, setSelectedCells] = useState<[number, number][]>([]);
   const [currentWord, setCurrentWord] = useState<string>("");
   const [foundWords, setFoundWords] = useState<Set<string>>(new Set());
@@ -38,13 +38,21 @@ export default function WordHunt() {
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
-  const isMouseDown = useRef(false);
+  const isDragging = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     setGrid(generateGrid());
     fetchWordList().then(setWordList);
+
+    // Prevent scrolling on mobile while playing
+    const preventScroll = (e: Event) => e.preventDefault();
+    document.addEventListener("touchmove", preventScroll, { passive: false });
+
+    return () => {
+      document.removeEventListener("touchmove", preventScroll);
+    };
   }, []);
 
   useEffect(() => {
@@ -68,14 +76,14 @@ export default function WordHunt() {
     }
 
     if (gameOver) return;
-    isMouseDown.current = true;
+    isDragging.current = true;
     setSelectedCells([[row, col]]);
     setCurrentWord(grid[row][col]);
     drawLine([[row, col]]);
   };
 
   const handleMove = (row: number, col: number) => {
-    if (!isMouseDown.current || gameOver) return;
+    if (!isDragging.current || gameOver) return;
     if (selectedCells.some(([r, c]) => r === row && c === col)) return;
 
     setSelectedCells([...selectedCells, [row, col]]);
@@ -84,7 +92,7 @@ export default function WordHunt() {
   };
 
   const handleEnd = () => {
-    isMouseDown.current = false;
+    isDragging.current = false;
     if (wordList.has(currentWord)) {
       if (!foundWords.has(currentWord)) {
         setFoundWords((prev) => new Set([...prev, currentWord]));
@@ -94,6 +102,17 @@ export default function WordHunt() {
     setSelectedCells([]);
     setCurrentWord("");
     clearCanvas();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDragging.current || gameOver) return;
+
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+    if (element?.dataset?.row && element?.dataset?.col) {
+      handleMove(Number(element.dataset.row), Number(element.dataset.col));
+    }
   };
 
   const drawLine = (cells: [number, number][]) => {
@@ -135,16 +154,14 @@ export default function WordHunt() {
     setGameStarted(false);
     setGameOver(false);
     setTimeLeft(GAME_DURATION);
-  };
+  }; 
 
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white overflow-hidden">
       <h1 className="text-3xl font-bold mb-4">Word Hunt</h1>
 
       {/* Score Counter */}
-      <div className="absolute top-5 right-5 text-xl font-bold bg-blue-700 px-4 py-2 rounded">
-        Score: {score}
-      </div>
+
 
       {gameOver ? (
         <div className="text-center">
@@ -175,7 +192,11 @@ export default function WordHunt() {
           {!gameStarted && <p className="text-lg text-gray-400">Tap a letter to start!</p>}
 
           <div className="relative">
-            <div className="grid grid-cols-4 gap-2 relative">
+	  <div 
+              className="grid grid-cols-4 gap-2 relative"
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleEnd}
+            >
               {grid.map((row, rowIndex) =>
                 row.map((letter, colIndex) => {
                   const isSelected = selectedCells.some(
@@ -190,10 +211,12 @@ export default function WordHunt() {
                       key={`${rowIndex}-${colIndex}`}
                       className={`w-16 h-16 flex items-center justify-center border-2 border-gray-300 text-2xl font-bold cursor-pointer select-none relative z-10
                         ${isGreen && isSelected ? "bg-green-500 text-white" : isYellow && isSelected ? "bg-yellow-500 text-black" : isSelected ? "bg-blue-500 text-white" : "bg-gray-700"}`}
-                      onMouseDown={() => handleStart(rowIndex, colIndex)}
-                      onMouseEnter={() => handleMove(rowIndex, colIndex)}
-                      onMouseUp={handleEnd}
-                      onTouchEnd={handleEnd}
+                    onMouseDown={() => handleStart(rowIndex, colIndex)}
+                    onMouseEnter={() => handleMove(rowIndex, colIndex)}
+                    onMouseUp={handleEnd}
+                    onTouchStart={() => handleStart(rowIndex, colIndex)}
+                    data-row={rowIndex}
+                    data-col={colIndex} 
                     >
                       {letter}
                     </div>
